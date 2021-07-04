@@ -6,6 +6,7 @@ export declare const selectors: {
     chatPanel: string;
     jobs: string;
     links: string;
+    title: string;
     companies: string;
     places: string;
     dates: string;
@@ -44,23 +45,13 @@ export declare class LoggedInRunStrategy extends RunStrategy {
     /**
      * Try to paginate
      * @param {Page} page
-     * @param {number} paginationIndex
-     * @param {number} timeout
-     * @returns {Promise<ILoadResult>}
-     * @static
-     * @private
-     */
-    private static _paginate;
-    /**
-     * Try to paginate
-     * @param {Page} page
      * @param {number} timeout
      * @param {string} tag
      * @returns {Promise<ILoadResult>}
      * @static
      * @private
      */
-    private static _paginate_new;
+    private static _paginate;
     /**
      * Hide chat panel
      * @param {Page} page

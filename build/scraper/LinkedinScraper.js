@@ -69,8 +69,7 @@ class LinkedinScraper extends Scraper_1.Scraper {
                     url.searchParams.append("sortBy", options.filters.relevance);
                 }
                 if (options.filters.time && options.filters.time.length) {
-                    const key = config_1.config.LI_AT_COOKIE ? "f_TPR" : "f_TP";
-                    url.searchParams.append(key, options.filters.time);
+                    url.searchParams.append("f_TPR", options.filters.time);
                 }
                 if (options.filters.type) {
                     if (!Array.isArray(options.filters.type)) {
@@ -89,10 +88,6 @@ class LinkedinScraper extends Scraper_1.Scraper {
                 }
             }
             url.searchParams.append("start", "0");
-            if (options.prefixURL != undefined) {
-                console.log('prefix seted');
-                return options.prefixURL + url.href;
-            }
             return url.href;
         };
         /**

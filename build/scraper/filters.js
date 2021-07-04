@@ -1,16 +1,15 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.remoteFilter = exports.experienceLevelFilter = exports.typeFilter = exports.timeFilter = exports.relevanceFilter = void 0;
-const config_1 = require("../config");
 exports.relevanceFilter = {
     RELEVANT: "R",
     RECENT: "DD",
 };
 exports.timeFilter = {
     ANY: "",
-    DAY: config_1.config.LI_AT_COOKIE ? "r86400" : "1",
-    WEEK: config_1.config.LI_AT_COOKIE ? "r604800" : "1,2",
-    MONTH: config_1.config.LI_AT_COOKIE ? "r2592000" : "1,2,3,4",
+    DAY: "r86400",
+    WEEK: "r604800",
+    MONTH: "r2592000",
 };
 exports.typeFilter = {
     FULL_TIME: "F",

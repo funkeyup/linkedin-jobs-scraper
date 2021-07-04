@@ -1,8 +1,8 @@
 import TypedEmitter from "typed-emitter";
 import { IEventListeners } from "./events";
-import { LaunchOptions, ChromeArgOptions, BrowserOptions } from "puppeteer";
+import { LaunchOptions, BrowserLaunchArgumentOptions, BrowserConnectOptions } from "puppeteer";
 import { IQuery, IQueryOptions } from "./query";
-export declare type ScraperOptions = LaunchOptions & ChromeArgOptions & BrowserOptions;
+export declare type ScraperOptions = LaunchOptions & BrowserLaunchArgumentOptions & BrowserConnectOptions;
 declare const Scraper_base: new () => TypedEmitter<IEventListeners>;
 export declare abstract class Scraper extends Scraper_base {
     options: ScraperOptions;

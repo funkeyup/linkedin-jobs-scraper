@@ -1,20 +1,20 @@
 import { RunStrategy, IRunStrategyResult } from "./RunStrategy";
 import { Page } from "puppeteer";
 import { IQuery } from "../query";
-export declare const selectors: {
-    container: string;
-    jobs: string;
-    links: string;
-    applyLink: string;
-    dates: string;
-    companies: string;
-    places: string;
-    detailsPanel: string;
-    detailsTop: string;
-    description: string;
-    criteria: string;
-    seeMoreJobs: string;
-};
+export declare class Selectors {
+    static switchSelectors: boolean;
+    static get container(): ".results__container.results__container--two-pane" | ".two-pane-serp-page__results-list";
+    static get jobs(): string;
+    static get links(): ".jobs-search__results-list li a.result-card__full-card-link" | "a.base-card__full-link";
+    static get applyLink(): string;
+    static get dates(): string;
+    static get companies(): ".result-card__subtitle.job-result-card__subtitle" | ".base-search-card__subtitle";
+    static get places(): ".job-result-card__location" | ".job-search-card__location";
+    static get detailsPanel(): string;
+    static get description(): string;
+    static get criteria(): "li.job-criteria__item" | ".description__job-criteria-item";
+    static get seeMoreJobs(): string;
+}
 /**
  * @class LoggedOutRunStrategy
  * @extends RunStrategy

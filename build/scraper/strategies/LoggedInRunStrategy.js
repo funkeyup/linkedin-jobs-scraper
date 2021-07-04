@@ -19,11 +19,12 @@ const constants_1 = require("../constants");
 exports.selectors = {
     container: '.jobs-search-two-pane__container',
     chatPanel: '.msg-overlay-list-bubble',
-    jobs: '.job-card-container',
-    links: 'a.job-card-container__link.job-card-list__title',
-    companies: '.job-card-container .artdeco-entity-lockup__subtitle',
-    places: '.job-card-container .artdeco-entity-lockup__caption',
-    dates: '.job-card-container time',
+    jobs: 'div.job-card-container',
+    links: 'a.job-card-container__link',
+    title: '.artdeco-entity-lockup__title',
+    companies: '.artdeco-entity-lockup__subtitle',
+    places: '.artdeco-entity-lockup__caption',
+    dates: 'time',
     description: '.jobs-description',
     detailsPanel: '.jobs-search__job-details--container',
     detailsTop: '.jobs-details-top-card',
@@ -97,14 +98,14 @@ class LoggedInRunStrategy extends RunStrategy_1.RunStrategy {
                 yield LoggedInRunStrategy._acceptCookies(page, tag);
                 let jobIndex = 0;
                 // Get number of all job links in the page
-                let jobLinksTot = yield page.evaluate((linksSelector) => document.querySelectorAll(linksSelector).length, exports.selectors.links);
-                if (jobLinksTot === 0) {
+                let jobsTot = yield page.evaluate((selector) => document.querySelectorAll(selector).length, exports.selectors.jobs);
+                if (jobsTot === 0) {
                     logger_1.logger.info(tag, `No jobs found, skip`);
                     break;
                 }
-                logger_1.logger.info(tag, "Jobs fetched: " + jobLinksTot);
+                logger_1.logger.info(tag, "Jobs fetched: " + jobsTot);
                 // Jobs loop
-                while (jobIndex < jobLinksTot && processed < query.options.limit) {
+                while (jobIndex < jobsTot && processed < query.options.limit) {
                     tag = `[${query.query}][${location}][${processed + 1}]`;
                     let jobId;
                     let jobLink;
@@ -122,47 +123,45 @@ class LoggedInRunStrategy extends RunStrategy_1.RunStrategy {
                     try {
                         // Extract job main fields
                         logger_1.logger.debug(tag, 'Evaluating selectors', [
+                            exports.selectors.jobs,
                             exports.selectors.links,
                             exports.selectors.companies,
                             exports.selectors.places,
                             exports.selectors.dates,
                         ]);
-                        [jobId, jobTitle, jobCompany, jobPlace, jobDate] = yield page.evaluate((jobsSelector, linksSelector, companiesSelector, placesSelector, datesSelector, jobIndex) => {
-                            const jobId = document.querySelectorAll(jobsSelector)[jobIndex] ?
-                                document.querySelectorAll(jobsSelector)[jobIndex]
-                                    .getAttribute("data-job-id") : "";
-                            const title = document.querySelectorAll(linksSelector)[jobIndex] ?
-                                document.querySelectorAll(linksSelector)[jobIndex].innerText : "";
-                            const company = document.querySelectorAll(companiesSelector)[jobIndex] ?
-                                document.querySelectorAll(companiesSelector)[jobIndex].innerText : "";
-                            const place = document.querySelectorAll(placesSelector)[jobIndex] ?
-                                document.querySelectorAll(placesSelector)[jobIndex].innerText : "";
-                            const date = document.querySelectorAll(datesSelector)[jobIndex] ?
-                                document.querySelectorAll(datesSelector)[jobIndex]
-                                    .getAttribute('datetime') : "";
+                        [jobId, jobLink, jobTitle, jobCompany, jobPlace, jobDate] = yield page.evaluate((jobsSelector, linksSelector, titleSelector, companiesSelector, placesSelector, datesSelector, jobIndex) => {
+                            const job = document.querySelectorAll(jobsSelector)[jobIndex];
+                            const link = job.querySelector(linksSelector);
+                            // Click job link and scroll
+                            link.scrollIntoView();
+                            link.click();
+                            // Extract job link (relative)
+                            const protocol = window.location.protocol + "//";
+                            const hostname = window.location.hostname;
+                            const linkUrl = protocol + hostname + link.getAttribute("href");
+                            const jobId = job.getAttribute("data-job-id");
+                            const title = job.querySelector(titleSelector) ?
+                                job.querySelector(titleSelector).innerText : "";
+                            const company = job.querySelector(companiesSelector) ?
+                                job.querySelector(companiesSelector).innerText : "";
+                            const place = job.querySelector(placesSelector) ?
+                                job.querySelector(placesSelector).innerText : "";
+                            const date = job.querySelector(datesSelector) ?
+                                job.querySelector(datesSelector).getAttribute('datetime') : "";
                             return [
                                 jobId,
+                                linkUrl,
                                 title,
                                 company,
                                 place,
                                 date,
                             ];
-                        }, exports.selectors.jobs, exports.selectors.links, exports.selectors.companies, exports.selectors.places, exports.selectors.dates, jobIndex);
+                        }, exports.selectors.jobs, exports.selectors.links, exports.selectors.title, exports.selectors.companies, exports.selectors.places, exports.selectors.dates, jobIndex);
                         // Try to load job details and extract job link
                         logger_1.logger.debug(tag, 'Evaluating selectors', [
-                            exports.selectors.links,
+                            exports.selectors.jobs,
                         ]);
-                        [jobLink, loadDetailsResult] = yield Promise.all([
-                            page.evaluate((linksSelector, jobIndex) => {
-                                const linkElem = document.querySelectorAll(linksSelector)[jobIndex];
-                                linkElem.scrollIntoView();
-                                linkElem.click();
-                                const protocol = window.location.protocol + "//";
-                                const hostname = window.location.hostname;
-                                return protocol + hostname + linkElem.getAttribute("href");
-                            }, exports.selectors.links, jobIndex),
-                            LoggedInRunStrategy._loadJobDetails(page, jobId)
-                        ]);
+                        loadDetailsResult = yield LoggedInRunStrategy._loadJobDetails(page, jobId);
                         // Check if loading job details has failed
                         if (!loadDetailsResult.success) {
                             logger_1.logger.error(tag, loadDetailsResult.error);
@@ -254,14 +253,14 @@ class LoggedInRunStrategy extends RunStrategy_1.RunStrategy {
                     jobIndex += 1;
                     processed += 1;
                     logger_1.logger.info(tag, `Processed`);
-                    if (processed < query.options.limit && jobIndex === jobLinksTot) {
+                    if (processed < query.options.limit && jobIndex === jobsTot) {
                         logger_1.logger.info(tag, 'Fecthing more jobs');
-                        const fetched = yield page.evaluate((linksSelector) => document.querySelectorAll(linksSelector).length, exports.selectors.links);
-                        if (fetched === jobLinksTot) {
+                        const fetched = yield page.evaluate((selector) => document.querySelectorAll(selector).length, exports.selectors.jobs);
+                        if (fetched === jobsTot) {
                             logger_1.logger.info(tag, "No more jobs available in this page");
                         }
                         else {
-                            jobLinksTot = fetched;
+                            jobsTot = fetched;
                         }
                     }
                 }
@@ -272,7 +271,7 @@ class LoggedInRunStrategy extends RunStrategy_1.RunStrategy {
                 paginationIndex += 1;
                 logger_1.logger.info(tag, `Pagination requested (${paginationIndex})`);
                 // const paginationResult = await LoggedInRunStrategy._paginate(page, paginationIndex);
-                const paginationResult = yield LoggedInRunStrategy._paginate_new(page, tag);
+                const paginationResult = yield LoggedInRunStrategy._paginate(page, tag);
                 // Check if loading jobs has failed
                 if (!paginationResult.success) {
                     logger_1.logger.info(tag, paginationResult.error);
@@ -333,74 +332,13 @@ LoggedInRunStrategy._loadJobDetails = (page, jobId, timeout = 2000) => __awaiter
 /**
  * Try to paginate
  * @param {Page} page
- * @param {number} paginationIndex
- * @param {number} timeout
- * @returns {Promise<ILoadResult>}
- * @static
- * @private
- */
-LoggedInRunStrategy._paginate = (page, paginationIndex, timeout = 2000) => __awaiter(void 0, void 0, void 0, function* () {
-    const pollingTime = 100;
-    const paginationBtnSelector = exports.selectors.paginationBtn(paginationIndex);
-    let elapsed = 0;
-    let loaded = false;
-    let clicked = false;
-    // Wait for pagination html to load
-    try {
-        yield page.waitForSelector(exports.selectors.pagination, { timeout: timeout });
-    }
-    catch (err) {
-        return {
-            success: false,
-            error: `Timeout on loading more jobs`
-        };
-    }
-    // Try click next pagination button (if exists)
-    clicked = yield page.evaluate((selector) => {
-        const button = document.querySelector(selector);
-        if (button) {
-            button.click();
-            return true;
-        }
-        else {
-            return false;
-        }
-    }, paginationBtnSelector);
-    // Failed to click next pagination button (pagination exhausted)
-    if (!clicked) {
-        return {
-            success: false,
-            error: `Pagination exhausted`
-        };
-    }
-    // Wait for new jobs to load
-    while (!loaded) {
-        loaded = yield page.evaluate((selector) => {
-            return document.querySelectorAll(selector).length > 0;
-        }, exports.selectors.links);
-        if (loaded)
-            return { success: true };
-        yield utils_1.sleep(pollingTime);
-        elapsed += pollingTime;
-        if (elapsed >= timeout) {
-            return {
-                success: false,
-                error: `Timeout on pagination`
-            };
-        }
-    }
-    return { success: true };
-});
-/**
- * Try to paginate
- * @param {Page} page
  * @param {number} timeout
  * @param {string} tag
  * @returns {Promise<ILoadResult>}
  * @static
  * @private
  */
-LoggedInRunStrategy._paginate_new = (page, tag, timeout = 2000) => __awaiter(void 0, void 0, void 0, function* () {
+LoggedInRunStrategy._paginate = (page, tag, timeout = 2000) => __awaiter(void 0, void 0, void 0, function* () {
     // Check if there is a new page to load
     try {
         yield page.waitForSelector(exports.selectors.paginationNextBtn, { timeout: timeout });
@@ -429,7 +367,7 @@ LoggedInRunStrategy._paginate_new = (page, tag, timeout = 2000) => __awaiter(voi
     while (!loaded) {
         loaded = yield page.evaluate((selector) => {
             return document.querySelectorAll(selector).length > 0;
-        }, exports.selectors.links);
+        }, exports.selectors.jobs);
         if (loaded)
             return { success: true };
         yield utils_1.sleep(pollingTime);

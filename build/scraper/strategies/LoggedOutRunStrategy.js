@@ -9,25 +9,54 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.LoggedOutRunStrategy = exports.selectors = void 0;
+exports.LoggedOutRunStrategy = exports.Selectors = void 0;
 const RunStrategy_1 = require("./RunStrategy");
 const events_1 = require("../events");
 const utils_1 = require("../../utils/utils");
 const logger_1 = require("../../logger/logger");
-exports.selectors = {
-    container: ".results__container.results__container--two-pane",
-    jobs: ".jobs-search__results-list li",
-    links: ".jobs-search__results-list li a.result-card__full-card-link",
-    applyLink: "a[data-is-offsite-apply=true]",
-    dates: 'time',
-    companies: ".result-card__subtitle.job-result-card__subtitle",
-    places: ".job-result-card__location",
-    detailsPanel: ".details-pane__content",
-    detailsTop: ".topcard__content-left",
-    description: ".description__text",
-    criteria: "li.job-criteria__item",
-    seeMoreJobs: "button.infinite-scroller__show-more-button",
-};
+class Selectors {
+    static get container() {
+        return !this.switchSelectors ? '.results__container.results__container--two-pane' :
+            '.two-pane-serp-page__results-list';
+    }
+    static get jobs() {
+        return !this.switchSelectors ? '.jobs-search__results-list li' :
+            '.jobs-search__results-list li';
+    }
+    static get links() {
+        return !this.switchSelectors ? '.jobs-search__results-list li a.result-card__full-card-link' :
+            'a.base-card__full-link';
+    }
+    static get applyLink() {
+        return 'a[data-is-offsite-apply=true]';
+    }
+    static get dates() {
+        return 'time';
+    }
+    static get companies() {
+        return !this.switchSelectors ? '.result-card__subtitle.job-result-card__subtitle' :
+            '.base-search-card__subtitle';
+    }
+    static get places() {
+        return !this.switchSelectors ? '.job-result-card__location' :
+            '.job-search-card__location';
+    }
+    static get detailsPanel() {
+        return '.details-pane__content';
+    }
+    static get description() {
+        return '.description__text';
+    }
+    static get criteria() {
+        return !this.switchSelectors ? 'li.job-criteria__item' :
+            '.description__job-criteria-item';
+    }
+    static get seeMoreJobs() {
+        return 'button.infinite-scroller__show-more-button';
+    }
+}
+exports.Selectors = Selectors;
+Selectors.switchSelectors = false;
 /**
  * @class LoggedOutRunStrategy
  * @extends RunStrategy
@@ -55,27 +84,42 @@ class LoggedOutRunStrategy extends RunStrategy_1.RunStrategy {
                 logger_1.logger.error(tag, "Scraper failed to run in anonymous mode, authentication may be necessary for this environment. Please check the documentation on how to use an authenticated session.");
                 return { exit: true };
             }
-            // Wait for lazy loading jobs
+            // Linkedin seems to randomly load two different set of selectors:
+            // the following hack tries to switch between the two sets
+            // Try to load first set of selectors
             try {
-                yield page.waitForSelector(exports.selectors.container, { timeout: 5000 });
+                Selectors.switchSelectors = false;
+                logger_1.logger.info(tag, 'Trying to load first selectors set');
+                logger_1.logger.debug(tag, `Evaluating selectors`, [Selectors.container]);
+                yield page.waitForSelector(Selectors.container, { timeout: 3000 });
             }
             catch (err) {
-                logger_1.logger.info(tag, `No jobs found, skip`);
-                return { exit: false };
+                // Try to load second set of selectors
+                try {
+                    Selectors.switchSelectors = true;
+                    logger_1.logger.info(tag, 'Trying to load second selectors set');
+                    logger_1.logger.debug(tag, `Evaluating selectors`, [Selectors.container]);
+                    yield page.waitForSelector(Selectors.container, { timeout: 3000 });
+                }
+                catch (err) {
+                    logger_1.logger.info(tag, 'Failed to load container selector, skip');
+                    return { exit: false };
+                }
             }
+            logger_1.logger.info(tag, 'OK');
             let jobIndex = 0;
             // Pagination loop
             while (processed < query.options.limit) {
                 yield LoggedOutRunStrategy._acceptCookies(page, tag);
                 // Get number of all job links in the page
-                let jobLinksTot = yield page.evaluate((linksSelector) => document.querySelectorAll(linksSelector).length, exports.selectors.links);
-                if (jobLinksTot === 0) {
+                let jobsTot = yield page.evaluate((selector) => document.querySelectorAll(selector).length, Selectors.jobs);
+                if (jobsTot === 0) {
                     logger_1.logger.info(tag, `No jobs found, skip`);
                     break;
                 }
-                logger_1.logger.info(tag, "Jobs fetched: " + jobLinksTot);
+                logger_1.logger.info(tag, "Jobs fetched: " + jobsTot);
                 // Jobs loop
-                while (jobIndex < jobLinksTot && processed < query.options.limit) {
+                while (jobIndex < jobsTot && processed < query.options.limit) {
                     tag = `[${query.query}][${location}][${processed + 1}]`;
                     let jobId;
                     let jobLink;
@@ -94,35 +138,42 @@ class LoggedOutRunStrategy extends RunStrategy_1.RunStrategy {
                     try {
                         // Extract job main fields
                         logger_1.logger.debug(tag, `Evaluating selectors`, [
-                            exports.selectors.links,
-                            exports.selectors.companies,
-                            exports.selectors.places,
-                            exports.selectors.dates,
+                            Selectors.jobs,
+                            Selectors.links,
+                            Selectors.companies,
+                            Selectors.places,
+                            Selectors.dates,
                         ]);
-                        [jobId, jobTitle, jobCompany, jobPlace, jobDate] = yield page.evaluate((jobsSelector, linksSelector, companiesSelector, placesSelector, datesSelector, jobIndex) => {
+                        [jobId, jobLink, jobTitle, jobCompany, jobPlace, jobDate] = yield page.evaluate((jobsSelector, linksSelector, companiesSelector, placesSelector, datesSelector, jobIndex) => {
+                            const job = document.querySelectorAll(jobsSelector)[jobIndex];
+                            const link = job.querySelector(linksSelector);
+                            // Click job link and scroll
+                            link.scrollIntoView();
+                            link.click();
+                            const linkUrl = link.getAttribute("href");
+                            let jobId = '';
+                            // Try first set of selectors
+                            jobId = job.getAttribute('data-id');
+                            // If failed, try second set of selectors
+                            if (!jobId) {
+                                jobId = job.querySelector(linksSelector)
+                                    .parentElement.getAttribute('data-entity-urn')
+                                    .split(':').splice(-1)[0];
+                            }
                             return [
-                                document.querySelectorAll(jobsSelector)[jobIndex]
-                                    .getAttribute("data-id"),
-                                document.querySelectorAll(linksSelector)[jobIndex].innerText,
-                                document.querySelectorAll(companiesSelector)[jobIndex].innerText,
-                                document.querySelectorAll(placesSelector)[jobIndex].innerText,
-                                document.querySelectorAll(datesSelector)[jobIndex]
-                                    .getAttribute('datetime')
+                                jobId,
+                                linkUrl,
+                                job.querySelector(linksSelector).innerText,
+                                job.querySelector(companiesSelector).innerText,
+                                job.querySelector(placesSelector).innerText,
+                                job.querySelector(datesSelector).getAttribute('datetime')
                             ];
-                        }, exports.selectors.jobs, exports.selectors.links, exports.selectors.companies, exports.selectors.places, exports.selectors.dates, jobIndex);
+                        }, Selectors.jobs, Selectors.links, Selectors.companies, Selectors.places, Selectors.dates, jobIndex);
                         // Load job details and extract job link
                         logger_1.logger.debug(tag, `Evaluating selectors`, [
-                            exports.selectors.links,
+                            Selectors.links,
                         ]);
-                        [jobLink, loadJobDetailsResult] = yield Promise.all([
-                            page.evaluate((linksSelector, jobIndex) => {
-                                const linkElem = document.querySelectorAll(linksSelector)[jobIndex];
-                                linkElem.scrollIntoView();
-                                linkElem.click();
-                                return linkElem.getAttribute("href");
-                            }, exports.selectors.links, jobIndex),
-                            LoggedOutRunStrategy._loadJobDetails(page, jobId),
-                        ]);
+                        loadJobDetailsResult = yield LoggedOutRunStrategy._loadJobDetails(page, jobId);
                         // Check if loading job details has failed
                         if (!loadJobDetailsResult.success) {
                             logger_1.logger.error(tag, loadJobDetailsResult.error);
@@ -132,33 +183,33 @@ class LoggedOutRunStrategy extends RunStrategy_1.RunStrategy {
                         }
                         // Use custom description function if available
                         logger_1.logger.debug(tag, `Evaluating selectors`, [
-                            exports.selectors.description
+                            Selectors.description
                         ]);
                         if ((_a = query.options) === null || _a === void 0 ? void 0 : _a.descriptionFn) {
                             [jobDescription, jobDescriptionHTML] = yield Promise.all([
                                 page.evaluate(`(${query.options.descriptionFn.toString()})();`),
                                 page.evaluate((selector) => {
                                     return document.querySelector(selector).outerHTML;
-                                }, exports.selectors.description)
+                                }, Selectors.description)
                             ]);
                         }
                         else {
                             [jobDescription, jobDescriptionHTML] = yield page.evaluate((selector) => {
                                 const el = document.querySelector(selector);
                                 return [el.innerText, el.outerHTML];
-                            }, exports.selectors.description);
+                            }, Selectors.description);
                         }
                         // Extract apply link
                         logger_1.logger.debug(tag, `Evaluating selectors`, [
-                            exports.selectors.applyLink
+                            Selectors.applyLink
                         ]);
                         jobApplyLink = yield page.evaluate((selector) => {
                             const applyBtn = document.querySelector(selector);
                             return applyBtn ? applyBtn.getAttribute("href") : null;
-                        }, exports.selectors.applyLink);
+                        }, Selectors.applyLink);
                         // Extract other job fields
                         logger_1.logger.debug(tag, `Evaluating selectors`, [
-                            exports.selectors.criteria
+                            Selectors.criteria
                         ]);
                         [
                             jobSenorityLevel,
@@ -181,7 +232,7 @@ class LoggedOutRunStrategy extends RunStrategy_1.RunStrategy {
                             return Array.from(nodeList)
                                 .map(spanList => Array.from(spanList)
                                 .map(e => e.innerText).join(', '));
-                        }, exports.selectors.criteria);
+                        }, Selectors.criteria);
                     }
                     catch (err) {
                         const errorMessage = `${tag}\t${err.message}`;
@@ -194,9 +245,9 @@ class LoggedOutRunStrategy extends RunStrategy_1.RunStrategy {
                     jobIndex += 1;
                     processed += 1;
                     logger_1.logger.info(tag, `Processed`);
-                    if (processed < query.options.limit && jobIndex === jobLinksTot) {
+                    if (processed < query.options.limit && jobIndex === jobsTot) {
                         logger_1.logger.info(tag, 'Fecthing new jobs');
-                        jobLinksTot = yield page.evaluate((linksSelector) => document.querySelectorAll(linksSelector).length, exports.selectors.links);
+                        jobsTot = yield page.evaluate((selector) => document.querySelectorAll(selector).length, Selectors.jobs);
                     }
                 }
                 // Check if we reached the limit of jobs to process
@@ -204,7 +255,7 @@ class LoggedOutRunStrategy extends RunStrategy_1.RunStrategy {
                     break;
                 // Check if there are more jobs to load
                 logger_1.logger.info(tag, "Checking for new jobs to load...");
-                const loadMoreJobsResult = yield LoggedOutRunStrategy._loadMoreJobs(page, jobLinksTot);
+                const loadMoreJobsResult = yield LoggedOutRunStrategy._loadMoreJobs(page, jobsTot);
                 // Check if loading jobs has failed
                 if (!loadMoreJobsResult.success) {
                     logger_1.logger.info(tag, "There are no more jobs available for the current query");
@@ -246,7 +297,7 @@ LoggedOutRunStrategy._loadJobDetails = (page, jobId, timeout = 2000) => __awaite
             const description = document.querySelector(descriptionSelector);
             return detailsPanel && detailsPanel.innerHTML.includes(jobId) &&
                 description && description.innerText.length > 0;
-        }, jobId, exports.selectors.detailsPanel, exports.selectors.description);
+        }, jobId, Selectors.detailsPanel, Selectors.description);
         if (loaded)
             return { success: true };
         yield utils_1.sleep(waitTime);
@@ -284,12 +335,12 @@ LoggedOutRunStrategy._loadMoreJobs = (page, jobLinksTot, timeout = 2000) => __aw
                 else {
                     return false;
                 }
-            }, exports.selectors.seeMoreJobs);
+            }, Selectors.seeMoreJobs);
         }
         loaded = yield page.evaluate((selector, jobLinksTot) => {
             window.scrollTo(0, document.body.scrollHeight);
             return document.querySelectorAll(selector).length > jobLinksTot;
-        }, exports.selectors.links, jobLinksTot);
+        }, Selectors.jobs, jobLinksTot);
         if (loaded)
             return { success: true };
         yield utils_1.sleep(pollingTime);

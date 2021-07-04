@@ -19,7 +19,7 @@ const browserDefaults = {
         "--disable-setuid-sandbox",
         "--disable-dev-shm-usage",
         // "--proxy-server='direct://",
-        "--proxy-bypass-list=*",
+        // "--proxy-bypass-list=*",
         "--allow-running-insecure-content",
         "--disable-web-security",
         "--disable-client-side-phishing-detection",

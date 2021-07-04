@@ -3,7 +3,6 @@ export interface IQuery {
     options?: IQueryOptions;
 }
 export interface IQueryOptions {
-    prefixURL?: string;
     locations?: string[];
     limit?: number;
     filters?: {
